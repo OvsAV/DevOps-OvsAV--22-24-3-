@@ -34,7 +34,8 @@ jobs:
           docker compose down
           docker compose up -d
           echo Waiting for containers...
-          timeout /T 30 /NOBREAK
+          rem ждём ~30 секунд, чтобы сервисы успели подняться
+          ping -n 30 127.0.0.1 >nul
 
       - name: Show container status
         shell: cmd
