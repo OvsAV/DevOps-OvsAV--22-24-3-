@@ -1,0 +1,137 @@
+name: Docker app CI
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy-and-test:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create .env from secrets
+        shell: pwsh
+        run: |
+          "# Generated from GitHub Secrets" | Out-File -FilePath .env -Encoding utf8
+          "DB_HOST=${{ secrets.DB_HOST }}" | Out-File -FilePath .env -Append -Encoding utf8
+          "DB_PORT=${{ secrets.DB_PORT }}" | Out-File -FilePath .env -Append -Encoding utf8
+          "DB_NAME=${{ secrets.DB_NAME }}" | Out-File -FilePath .env -Append -Encoding utf8
+          "DB_USER=${{ secrets.DB_USER }}" | Out-File -FilePath .env -Append -Encoding utf8
+          "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" | Out-File -FilePath .env -Append -Encoding utf8
+          "APP_PORT=${{ secrets.APP_PORT }}" | Out-File -FilePath .env -Append -Encoding utf8
+          "POSTGRES_DB=${{ secrets.DB_NAME }}" | Out-File -FilePath .env -Append -Encoding utf8
+          "POSTGRES_USER=${{ secrets.DB_USER }}" | Out-File -FilePath .env -Append -Encoding utf8
+          "POSTGRES_PASSWORD=${{ secrets.DB_PASSWORD }}" | Out-File -FilePath .env -Append -Encoding utf8
+
+          Write-Host "Contents of .env (masked):"
+          Get-Content .env | ForEach-Object {
+            if ($_ -match "=") {
+              ($_.Split("=")[0]) + "=***"
+            } else {
+              $_
+            }
+          }
+
+      - name: Start application with Docker Compose
+        shell: pwsh
+        run: |
+          docker compose down
+          docker compose up -d
+          Write-Host "Waiting for containers..."
+          Start-Sleep -Seconds 20
+          docker compose ps
+
+      - name: Verify containers are running
+        shell: pwsh
+        run: |
+          $ps = docker compose ps
+          $ps
+          if ($ps -match "Up") {
+            Write-Host "✅ Containers are running"
+          } else {
+            Write-Error "❌ Some containers are not running"
+            exit 1
+          }
+
+      - name: Run application tests
+        shell: pwsh
+        run: |
+          $port = "${{ secrets.APP_PORT }}"
+
+          Write-Host "1) Health check"
+          try {
+            $resp = Invoke-WebRequest -Uri "http://localhost:$port/health" -UseBasicParsing
+          } catch {
+            Write-Error "❌ Health endpoint is not available"
+            exit 1
+          }
+          if ($resp.StatusCode -ne 200) {
+            Write-Error "❌ Health check failed with status $($resp.StatusCode)"
+            exit 1
+          }
+
+          Write-Host "2) DB connectivity via app (/api/users/count)"
+          $apiResp = Invoke-WebRequest -Uri "http://localhost:$port/api/users/count" -UseBasicParsing
+          $webCount = $apiResp.Content.Trim()
+          if (-not $webCount) {
+            Write-Error "❌ Empty response from /api/users/count"
+            exit 1
+          }
+
+          Write-Host "3) Compare DB data and web data"
+          $dbCountRaw = docker compose exec -T db psql -U ${{ secrets.DB_USER }} -d ${{ secrets.DB_NAME }} -t -c "SELECT COUNT(*) FROM users;" 2>$null
+          $dbCount = ($dbCountRaw | ForEach-Object { $_.Trim() } | Where-Object {$_})[-1]
+
+          Write-Host "Database count: $dbCount"
+          Write-Host "Web API count : $webCount"
+
+          if ($dbCount -eq $webCount) {
+            Write-Host "✅ Data consistency OK"
+          } else {
+            Write-Error "❌ Data consistency FAILED"
+            exit 1
+          }
+
+          "DB_COUNT=$dbCount" | Out-File -FilePath test-env.txt -Encoding utf8
+          "WEB_COUNT=$webCount" | Out-File -FilePath test-env.txt -Append -Encoding utf8
+
+      - name: Create test report
+        shell: pwsh
+        run: |
+          $dbCount = (Select-String -Path test-env.txt -Pattern '^DB_COUNT=').ToString().Split('=')[1]
+          $webCount = (Select-String -Path test-env.txt -Pattern '^WEB_COUNT=').ToString().Split('=')[1]
+
+          "# Deployment Test Report" | Out-File -FilePath test-report.md -Encoding utf8
+          "- Date: $(Get-Date)" | Out-File -FilePath test-report.md -Append -Encoding utf8
+          "- Application: Healthy ✅" | Out-File -FilePath test-report.md -Append -Encoding utf8
+          "- Database: Connected ✅" | Out-File -FilePath test-report.md -Append -Encoding utf8
+          "- Data Consistency: Passed ✅" | Out-File -FilePath test-report.md -Append -Encoding utf8
+          "" | Out-File -FilePath test-report.md -Append -Encoding utf8
+          "## Test Results" | Out-File -FilePath test-report.md -Append -Encoding utf8
+          "- Database records: $dbCount" | Out-File -FilePath test-report.md -Append -Encoding utf8
+          "- Web API records: $webCount" | Out-File -FilePath test-report.md -Append -Encoding utf8
+
+      - name: Save Docker logs
+        if: always()
+        shell: pwsh
+        run: |
+          docker compose logs > deployment-logs.txt
+          docker images > docker-images.txt
+          docker ps -a > docker-ps.txt
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-artifacts
+          path: |
+            .env
+            test-report.md
+            deployment-logs.txt
+            docker-images.txt
+            docker-ps.txt
+          retention-days: 30
