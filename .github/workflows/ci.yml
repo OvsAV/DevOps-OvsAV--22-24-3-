@@ -50,23 +50,21 @@ jobs:
             echo Containers are running
           )
 
-      - name: Run application tests
-        shell: cmd
-        run: |
-          set PORT=${{ secrets.APP_PORT }}
-
-          echo 1) Health check
-          curl -s http://localhost:%PORT%/health > nul
+            - name: Run application tests
+            shell: cmd
+            run: |
+          echo 1) Health check inside web container
+          docker compose exec -T web python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()" 1>nul 2>nul
           if errorlevel 1 (
             echo Health endpoint is not available
             exit /b 1
           )
 
-          echo 2) Get users count from web API
-          for /f "usebackq tokens=1" %%i in (`curl -s http://localhost:%PORT%/api/users/count`) do set WEB_COUNT=%%i
+          echo 2) Get users count from web API (inside web container)
+          for /f "usebackq tokens=*" %%i in (`docker compose exec -T web python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/api/users/count').read().decode().strip())"`) do set WEB_COUNT=%%i
           echo WEB_COUNT=%WEB_COUNT%
           if "%WEB_COUNT%"=="" (
-            echo Empty response from /api/users/count
+            echo Empty response from API
             exit /b 1
           )
 
@@ -84,6 +82,7 @@ jobs:
 
           echo DB_COUNT=%DB_COUNT%> test-env.txt
           echo WEB_COUNT=%WEB_COUNT%>> test-env.txt
+
 
       - name: Create test report
         shell: cmd
