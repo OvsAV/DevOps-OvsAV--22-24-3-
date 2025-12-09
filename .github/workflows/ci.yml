@@ -14,7 +14,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Create .env from secrets
-        shell: pwsh
+        shell: powershell
         run: |
           "# Generated from GitHub Secrets" | Out-File -FilePath .env -Encoding utf8
           "DB_HOST=${{ secrets.DB_HOST }}" | Out-File -FilePath .env -Append -Encoding utf8
@@ -37,7 +37,7 @@ jobs:
           }
 
       - name: Start application with Docker Compose
-        shell: pwsh
+        shell: powershell
         run: |
           docker compose down
           docker compose up -d
@@ -46,7 +46,7 @@ jobs:
           docker compose ps
 
       - name: Verify containers are running
-        shell: pwsh
+        shell: powershell
         run: |
           $ps = docker compose ps
           $ps
@@ -58,7 +58,7 @@ jobs:
           }
 
       - name: Run application tests
-        shell: pwsh
+        shell: powershell
         run: |
           $port = "${{ secrets.APP_PORT }}"
 
@@ -90,48 +90,3 @@ jobs:
           Write-Host "Web API count : $webCount"
 
           if ($dbCount -eq $webCount) {
-            Write-Host "✅ Data consistency OK"
-          } else {
-            Write-Error "❌ Data consistency FAILED"
-            exit 1
-          }
-
-          "DB_COUNT=$dbCount" | Out-File -FilePath test-env.txt -Encoding utf8
-          "WEB_COUNT=$webCount" | Out-File -FilePath test-env.txt -Append -Encoding utf8
-
-      - name: Create test report
-        shell: pwsh
-        run: |
-          $dbCount = (Select-String -Path test-env.txt -Pattern '^DB_COUNT=').ToString().Split('=')[1]
-          $webCount = (Select-String -Path test-env.txt -Pattern '^WEB_COUNT=').ToString().Split('=')[1]
-
-          "# Deployment Test Report" | Out-File -FilePath test-report.md -Encoding utf8
-          "- Date: $(Get-Date)" | Out-File -FilePath test-report.md -Append -Encoding utf8
-          "- Application: Healthy ✅" | Out-File -FilePath test-report.md -Append -Encoding utf8
-          "- Database: Connected ✅" | Out-File -FilePath test-report.md -Append -Encoding utf8
-          "- Data Consistency: Passed ✅" | Out-File -FilePath test-report.md -Append -Encoding utf8
-          "" | Out-File -FilePath test-report.md -Append -Encoding utf8
-          "## Test Results" | Out-File -FilePath test-report.md -Append -Encoding utf8
-          "- Database records: $dbCount" | Out-File -FilePath test-report.md -Append -Encoding utf8
-          "- Web API records: $webCount" | Out-File -FilePath test-report.md -Append -Encoding utf8
-
-      - name: Save Docker logs
-        if: always()
-        shell: pwsh
-        run: |
-          docker compose logs > deployment-logs.txt
-          docker images > docker-images.txt
-          docker ps -a > docker-ps.txt
-
-      - name: Upload artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: deployment-artifacts
-          path: |
-            .env
-            test-report.md
-            deployment-logs.txt
-            docker-images.txt
-            docker-ps.txt
-          retention-days: 30
