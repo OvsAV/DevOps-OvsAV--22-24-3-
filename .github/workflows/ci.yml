@@ -16,8 +16,7 @@ jobs:
       - name: Create .env from secrets
         shell: cmd
         run: |
-          echo # Generated from GitHub Secrets> .env
-          echo DB_HOST=${{ secrets.DB_HOST }}>> .env
+          echo DB_HOST=${{ secrets.DB_HOST }}> .env
           echo DB_PORT=${{ secrets.DB_PORT }}>> .env
           echo DB_NAME=${{ secrets.DB_NAME }}>> .env
           echo DB_USER=${{ secrets.DB_USER }}>> .env
@@ -26,7 +25,17 @@ jobs:
           echo POSTGRES_DB=${{ secrets.DB_NAME }}>> .env
           echo POSTGRES_USER=${{ secrets.DB_USER }}>> .env
           echo POSTGRES_PASSWORD=${{ secrets.DB_PASSWORD }}>> .env
-          type .env
+
+          rem копия для артефакта с замазанными значениями
+          echo DB_HOST=***> env-from-secrets.txt
+          echo DB_PORT=***>> env-from-secrets.txt
+          echo DB_NAME=***>> env-from-secrets.txt
+          echo DB_USER=***>> env-from-secrets.txt
+          echo DB_PASSWORD=***>> env-from-secrets.txt
+          echo APP_PORT=***>> env-from-secrets.txt
+          echo POSTGRES_DB=***>> env-from-secrets.txt
+          echo POSTGRES_USER=***>> env-from-secrets.txt
+          echo POSTGRES_PASSWORD=***>> env-from-secrets.txt
 
       - name: Start application with Docker Compose
         shell: cmd
@@ -97,7 +106,7 @@ jobs:
         with:
           name: deployment-artifacts
           path: |
-            .env
+            env-from-secrets.txt
             test-report.md
             deployment-logs.txt
             docker-images.txt
