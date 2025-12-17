@@ -145,9 +145,24 @@ jobs:
             echo POSTGRES_USER=***
             echo POSTGRES_PASSWORD=***
           ) > .env
-          echo ===== ensure .env exists =====
-          dir .env
-          type .env
+
+      - name: Debug workspace files (before upload)
+        if: always()
+        shell: cmd
+        run: |
+          echo ===== WHERE AM I =====
+          cd
+          echo ===== LIST FILES =====
+          dir
+          echo ===== LIST ALL FILES (including hidden) =====
+          dir /a
+          echo ===== CHECK .env =====
+          if exist .env (
+            echo .env exists
+            type .env
+          ) else (
+            echo .env NOT FOUND
+          )
 
       - name: Upload artifacts
         if: always()
