@@ -1,9 +1,9 @@
 name: Docker app CI
 
 on:
-  workflow_dispatch:
   push:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   deploy-and-test:
@@ -13,65 +13,74 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Create .env from secrets
+      - name: Create .env from GitHub Secrets
         shell: cmd
         run: |
-          echo DB_HOST=${{ secrets.DB_HOST }}> .env
-          echo DB_PORT=${{ secrets.DB_PORT }}>> .env
-          echo DB_NAME=${{ secrets.DB_NAME }}>> .env
-          echo DB_USER=${{ secrets.DB_USER }}>> .env
-          echo DB_PASSWORD=${{ secrets.DB_PASSWORD }}>> .env
-          echo APP_PORT=${{ secrets.APP_PORT }}>> .env
-          echo POSTGRES_DB=${{ secrets.DB_NAME }}>> .env
-          echo POSTGRES_USER=${{ secrets.DB_USER }}>> .env
-          echo POSTGRES_PASSWORD=${{ secrets.DB_PASSWORD }}>> .env
-
-          rem копия для артефакта с замазанными значениями
-          echo DB_HOST=***> env-from-secrets.txt
-          echo DB_PORT=***>> env-from-secrets.txt
-          echo DB_NAME=***>> env-from-secrets.txt
-          echo DB_USER=***>> env-from-secrets.txt
-          echo DB_PASSWORD=***>> env-from-secrets.txt
-          echo APP_PORT=***>> env-from-secrets.txt
-          echo POSTGRES_DB=***>> env-from-secrets.txt
-          echo POSTGRES_USER=***>> env-from-secrets.txt
-          echo POSTGRES_PASSWORD=***>> env-from-secrets.txt
+          (
+            echo # Generated from GitHub Secrets
+            echo DB_HOST=${{ secrets.DB_HOST }}
+            echo DB_PORT=${{ secrets.DB_PORT }}
+            echo DB_NAME=${{ secrets.DB_NAME }}
+            echo DB_USER=${{ secrets.DB_USER }}
+            echo DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            echo APP_PORT=${{ secrets.APP_PORT }}
+            echo APP_SECRET=${{ secrets.APP_SECRET }}
+            echo API_KEY=${{ secrets.API_KEY }}
+            echo POSTGRES_DB=${{ secrets.DB_NAME }}
+            echo POSTGRES_USER=${{ secrets.DB_USER }}
+            echo POSTGRES_PASSWORD=${{ secrets.DB_PASSWORD }}
+          ) > .env
 
       - name: Start application with Docker Compose
         shell: cmd
         run: |
-          docker compose down
-          docker compose up -d
-          echo Waiting for containers...
-          rem ждём ~30 секунд, чтобы сервисы успели подняться
-          ping -n 30 127.0.0.1 >nul
-
-      - name: Show container status
-        shell: cmd
-        run: |
+          docker compose down --remove-orphans
+          docker compose up -d --build
           echo ===== docker compose ps =====
           docker compose ps
+
+      - name: Wait until app is ready
+        shell: cmd
+        run: |
+          set PORT=${{ secrets.APP_PORT }}
+          echo Waiting for http://localhost:%PORT%/health ...
+          for /L %%i in (1,1,30) do (
+            curl -f -s http://localhost:%PORT%/health >nul 2>nul && goto :ok
+            echo attempt %%i/30 not ready
+            ping -n 2 127.0.0.1 >nul
+          )
+          echo App did not become ready
+          docker compose logs
+          exit /b 1
+          :ok
+          echo App is ready
 
       - name: Run application tests
         shell: cmd
         run: |
-          echo 1) Health check inside web container
-          docker compose exec -T web python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()" 1>nul 2>nul
+          set PORT=${{ secrets.APP_PORT }}
+
+          echo 1) Health check
+          curl -f -s http://localhost:%PORT%/health >nul
           if errorlevel 1 (
             echo Health endpoint is not available
             exit /b 1
           )
 
-          echo 2) Get users count from web API (inside web container)
-          for /f "usebackq tokens=*" %%i in (`docker compose exec -T web python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/api/users/count').read().decode().strip())"`) do set WEB_COUNT=%%i
-          echo WEB_COUNT=%WEB_COUNT%
+          echo 2) Get users count from web API
+          for /f "usebackq tokens=1" %%i in (`curl -s http://localhost:%PORT%/api/users/count`) do set WEB_COUNT=%%i
           if "%WEB_COUNT%"=="" (
-            echo Empty response from API
+            echo Empty response from /api/users/count
             exit /b 1
           )
+          echo WEB_COUNT=%WEB_COUNT%
 
           echo 3) Get users count from DB
           for /f "usebackq tokens=1" %%i in (`docker compose exec -T db psql -U ${{ secrets.DB_USER }} -d ${{ secrets.DB_NAME }} -t -A -c "SELECT COUNT(*) FROM users;"`) do set DB_COUNT=%%i
+          if "%DB_COUNT%"=="" (
+            echo Empty response from DB COUNT query
+            exit /b 1
+          )
           echo DB_COUNT=%DB_COUNT%
 
           echo 4) Compare counts
@@ -90,7 +99,33 @@ jobs:
         run: |
           echo # Deployment Test Report> test-report.md
           echo Date: %date% %time%>> test-report.md
+          echo.>> test-report.md
+          echo ## Checks>> test-report.md
+          echo - health: OK>> test-report.md
+          echo - api: /api/users/count OK>> test-report.md
+          echo - db: SELECT COUNT(*) OK>> test-report.md
+          echo - consistency: DB_COUNT == WEB_COUNT OK>> test-report.md
+          echo.>> test-report.md
+          echo ## Values>> test-report.md
           type test-env.txt>> test-report.md
+
+      - name: Prepare sanitized .env for artifact (no secret values)
+        if: always()
+        shell: cmd
+        run: |
+          (
+            echo DB_HOST=***
+            echo DB_PORT=***
+            echo DB_NAME=***
+            echo DB_USER=***
+            echo DB_PASSWORD=***
+            echo APP_PORT=***
+            echo APP_SECRET=***
+            echo API_KEY=***
+            echo POSTGRES_DB=***
+            echo POSTGRES_USER=***
+            echo POSTGRES_PASSWORD=***
+          ) > .env
 
       - name: Save Docker logs
         if: always()
@@ -106,7 +141,7 @@ jobs:
         with:
           name: deployment-artifacts
           path: |
-            env-from-secrets.txt
+            .env
             test-report.md
             deployment-logs.txt
             docker-images.txt
