@@ -120,7 +120,15 @@ jobs:
           echo ## Values>> test-report.md
           type test-env.txt>> test-report.md
 
-      - name: Prepare sanitized .env for artifact (no secret values)
+      - name: Save Docker logs
+        if: always()
+        shell: cmd
+        run: |
+          docker compose logs > deployment-logs.txt
+          docker images > docker-images.txt
+          docker ps -a > docker-ps.txt
+
+      - name: Ensure sanitized .env exists for artifact
         if: always()
         shell: cmd
         run: |
@@ -137,14 +145,9 @@ jobs:
             echo POSTGRES_USER=***
             echo POSTGRES_PASSWORD=***
           ) > .env
-
-      - name: Save Docker logs
-        if: always()
-        shell: cmd
-        run: |
-          docker compose logs > deployment-logs.txt
-          docker images > docker-images.txt
-          docker ps -a > docker-ps.txt
+          echo ===== ensure .env exists =====
+          dir .env
+          type .env
 
       - name: Upload artifacts
         if: always()
