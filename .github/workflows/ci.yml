@@ -111,12 +111,6 @@ jobs:
           echo # Deployment Test Report> test-report.md
           echo Date: %date% %time%>> test-report.md
           echo.>> test-report.md
-          echo ## Checks>> test-report.md
-          echo - health: OK>> test-report.md
-          echo - api: /api/users/count OK>> test-report.md
-          echo - db: SELECT COUNT(*) OK>> test-report.md
-          echo - consistency: DB_COUNT == WEB_COUNT OK>> test-report.md
-          echo.>> test-report.md
           echo ## Values>> test-report.md
           type test-env.txt>> test-report.md
 
@@ -146,29 +140,12 @@ jobs:
             echo POSTGRES_PASSWORD=***
           ) > .env
 
-      - name: Debug workspace files (before upload)
-        if: always()
-        shell: cmd
-        run: |
-          echo ===== WHERE AM I =====
-          cd
-          echo ===== LIST FILES =====
-          dir
-          echo ===== LIST ALL FILES (including hidden) =====
-          dir /a
-          echo ===== CHECK .env =====
-          if exist .env (
-            echo .env exists
-            type .env
-          ) else (
-            echo .env NOT FOUND
-          )
-
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: deployment-artifacts
+          include-hidden-files: true
           path: |
             .env
             test-report.md
