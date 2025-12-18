@@ -111,6 +111,12 @@ jobs:
           echo # Deployment Test Report> test-report.md
           echo Date: %date% %time%>> test-report.md
           echo.>> test-report.md
+          echo ## Checks>> test-report.md
+          echo - health: OK>> test-report.md
+          echo - api: /api/users/count OK>> test-report.md
+          echo - db: SELECT COUNT(*) OK>> test-report.md
+          echo - consistency: DB_COUNT == WEB_COUNT OK>> test-report.md
+          echo.>> test-report.md
           echo ## Values>> test-report.md
           type test-env.txt>> test-report.md
 
