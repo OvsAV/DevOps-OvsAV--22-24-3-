@@ -29,7 +29,9 @@ Docker Compose, а также автоматически проверяется 
 Для проекта настроен CI/CD pipeline с использованием GitHub Actions.
 
 - Репозиторий: https://github.com/OvsAV/DevOps-OvsAV--22-24-3-
-- Workflow: Docker app CI
+- Workflow: Docker app CI https://github.com/OvsAV/DevOps-OvsAV--22-24-3-/actions/runs/20333640574
+- Artifacts: deployment-artifacts (5 файлов).
+- Ссылка для загрузки артефактов:  https://github.com/OvsAV/DevOps-OvsAV--22-24-3-/actions/runs/20333640574/artifacts/4910132099
 - Runner: self-hosted
 
 В ходе выполнения pipeline:
